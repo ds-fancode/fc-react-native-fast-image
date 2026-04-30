@@ -5,6 +5,7 @@ import android.app.Activity;
 import androidx.annotation.NonNull;
 
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.RequestBuilder;
 import com.bumptech.glide.load.model.GlideUrl;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReadableArray;
@@ -38,7 +39,7 @@ class FastImageViewModuleImplementation {
                             System.out.println("Source is null or URI is empty");
                             continue;
                           }
-                    Glide
+                    RequestBuilder<?> preloadBuilder = Glide
                             .with(activity.getApplicationContext())
                             // This will make this work for remote and local images. e.g.
                             //    - file:///
@@ -50,11 +51,37 @@ class FastImageViewModuleImplementation {
                                     imageSource.isBase64Resource() ? imageSource.getSource() :
                                     imageSource.isResource() ? imageSource.getUri() : imageSource.getGlideUrl()
                             )
-                            .apply(FastImageViewConverter.getOptions(activity, imageSource, source, null))
-                            .preload();
+                            .apply(FastImageViewConverter.getOptions(activity, imageSource, source, null));
+                    if (FastImageViewConverter.shouldApplySuperResolution(source)) {
+                        String preloadSrUrl = preloadUrlKeyForSuperResolution(imageSource);
+                        preloadBuilder = preloadBuilder.transform(new SuperResolutionTransformation(preloadSrUrl));
+                    }
+                    preloadBuilder.preload();
                 }
             }
         });
+    }
+
+    /**
+     * Same URL identity as {@link FastImageViewWithUrl} uses for {@link SuperResolutionTransformation} (cache key + logs).
+     */
+    private static String preloadUrlKeyForSuperResolution(FastImageSource imageSource) {
+        if (imageSource == null) {
+            return "";
+        }
+        try {
+            if (!imageSource.isBase64Resource() && !imageSource.isResource()) {
+                GlideUrl glideUrl = imageSource.getGlideUrl();
+                if (glideUrl != null) {
+                    return glideUrl.toStringUrl();
+                }
+            }
+            if (imageSource.getUri() != null) {
+                return imageSource.getUri().toString();
+            }
+        } catch (Exception ignored) {
+        }
+        return "";
     }
 
     public void clearMemoryCache(final Promise promise) {

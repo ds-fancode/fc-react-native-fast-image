@@ -37,6 +37,10 @@ public class FastImageRequestListener<T extends Drawable> implements RequestList
     @Override
     public boolean onLoadFailed(@androidx.annotation.Nullable GlideException e, Object model, Target<T> target, boolean isFirstResource) {
         FastImageOkHttpProgressGlideModule.forget(key);
+        String errMsg = e != null ? e.getMessage() : "null";
+        FastImageSrLog.w("load_dbg",
+                "onLoadFailed key=" + (key.length() > 60 ? key.substring(0, 60) : key)
+                + " err=" + errMsg);
         if (!(target instanceof ImageViewTarget)) {
             return false;
         }
@@ -63,6 +67,19 @@ public class FastImageRequestListener<T extends Drawable> implements RequestList
         ThemedReactContext context = (ThemedReactContext) view.getContext();
         EventDispatcher dispatcher = UIManagerHelper.getEventDispatcherForReactTag(context, view.getId());
         int surfaceId = UIManagerHelper.getSurfaceId(view);
+
+        boolean attached = view.isAttachedToWindow();
+        FastImageSrLog.i("load_dbg",
+                "onResourceReady viewId=" + view.getId()
+                + " attached=" + attached
+                + " source=" + dataSource
+                + " size=" + resource.getIntrinsicWidth() + "x" + resource.getIntrinsicHeight()
+                + " key=" + (key.length() > 60 ? key.substring(0, 60) : key));
+        if (!attached) {
+            FastImageSrLog.w("load_dbg",
+                    "view not attached — onLoad/onLoadEnd will go to a dead viewId=" + view.getId()
+                    + "; image may stay blank (loader never dismissed)");
+        }
 
         if (dispatcher != null) {
             int width = resource.getIntrinsicWidth();

@@ -28,6 +28,10 @@ import java.util.Map;
 import javax.annotation.Nullable;
 
 class FastImageViewConverter {
+
+    private static volatile boolean loggedJsSrReady;
+    private static volatile boolean loggedJsSrUnavailable;
+
     private static final Drawable TRANSPARENT_DRAWABLE = new ColorDrawable(Color.TRANSPARENT);
 
     private static final Map<String, FastImageCacheControl> FAST_IMAGE_CACHE_CONTROL_MAP =
@@ -155,6 +159,31 @@ class FastImageViewConverter {
         }
 
         return options;
+    }
+
+    /**
+     * When JS sets {@code superResolution: true}, Glide applies {@link SuperResolutionTransformation}.
+     * Requires {@link FastImageSuperResolution#init(android.content.Context)} and a successful model load.
+     */
+    static boolean shouldApplySuperResolution(@Nullable ReadableMap source) {
+        if (source == null || !source.hasKey("superResolution")) {
+            return false;
+        }
+        try {
+            boolean wantSr = source.getBoolean("superResolution");
+            boolean ready = FastImageSuperResolution.getInstance().isAvailable();
+            if (wantSr && !ready && !loggedJsSrUnavailable) {
+                loggedJsSrUnavailable = true;
+                FastImageSrLog.w("js", "superResolution=true but model not READY — filter tag " + FastImageSrLog.TAG);
+            }
+            if (wantSr && ready && !loggedJsSrReady) {
+                loggedJsSrReady = true;
+                FastImageSrLog.i("js", "superResolution=true and model READY — Glide SR transform enabled");
+            }
+            return wantSr && ready;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private static FastImageCacheControl getCacheControl(ReadableMap source) {
