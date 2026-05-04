@@ -9,6 +9,33 @@
 #import <SDWebImageSVGCoder/SDImageSVGCoder.h>
 #endif
 
+// Forward declare the Swift upscaler class
+// This allows runtime checking without compile-time dependency on SportsGuru-Swift.h
+@class FCImageUpscaler;
+
+// Helper to get the upscaler instance at runtime
+// Swift classes are namespaced with module name: "ModuleName.ClassName"
+static id _Nullable FCGetImageUpscalerShared(void) {
+    // Try with module prefix first (Swift classes are namespaced)
+    Class upscalerClass = NSClassFromString(@"SportsGuru.FCImageUpscaler");
+
+    // Fallback to just class name (in case of @objc(FCImageUpscaler) override)
+    if (!upscalerClass) {
+        upscalerClass = NSClassFromString(@"FCImageUpscaler");
+    }
+
+    if (upscalerClass) {
+        SEL sharedSelector = NSSelectorFromString(@"shared");
+        if ([upscalerClass respondsToSelector:sharedSelector]) {
+            #pragma clang diagnostic push
+            #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+            return [upscalerClass performSelector:sharedSelector];
+            #pragma clang diagnostic pop
+        }
+    }
+    return nil;
+}
+
 @interface FFFastImageView ()
 
 @property(nonatomic, assign) BOOL hasSentOnLoadStart;
@@ -311,6 +338,7 @@ static NSString * const kFFFastImageDefaultErrorMessage = @"Load failed";
 
 - (void) downloadImage: (FFFastImageSource*)source options: (SDWebImageOptions)options context: (SDWebImageContext*)context {
     __weak FFFastImageView *weakSelf = self; // Always use a weak reference to self in blocks
+    __block NSInteger totalDownloadedBytes = 0; // Track downloaded bytes for logging
     // transition: default to none; enable fade if requested
     if (self.transition && [self.transition isEqualToString:@"fade"]) {
         self.sd_imageTransition = SDWebImageTransition.fadeTransition;
@@ -320,6 +348,7 @@ static NSString * const kFFFastImageDefaultErrorMessage = @"Load failed";
                      options: options
                      context: context
                     progress: ^(NSInteger receivedSize, NSInteger expectedSize, NSURL* _Nullable targetURL) {
+        totalDownloadedBytes = expectedSize;
         [self onProgressEvent:receivedSize expectedSize:expectedSize];
                     } completed: ^(UIImage* _Nullable image,
                     NSError* _Nullable error,
@@ -331,9 +360,73 @@ static NSString * const kFFFastImageDefaultErrorMessage = @"Load failed";
 
                     [weakSelf onLoadEndEvent];
                 } else {
-                    weakSelf.hasCompleted = YES;
-                    [weakSelf sendOnLoad: image];
-                    [weakSelf onLoadEndEvent];
+                    NSString *cacheTypeString = @"Unknown";
+                    switch (cacheType) {
+                        case SDImageCacheTypeNone:
+                            cacheTypeString = @"Network";
+                            break;
+                        case SDImageCacheTypeDisk:
+                            cacheTypeString = @"Disk";
+                            break;
+                        case SDImageCacheTypeMemory:
+                            cacheTypeString = @"Memory";
+                            break;
+                        default:
+                            break;
+                    }
+
+                    CGFloat imageSizeKB = totalDownloadedBytes / 1024.0;
+                    CGFloat imageSizeMB = imageSizeKB / 1024.0;
+
+                    NSLog(@"[FCImageMetrics] URL: %@ | Downloaded: %.2f KB (%.3f MB) | Source: %@ | ImageSize: %.0fx%.0f | Upscaling: %@",
+                          imageURL.absoluteString,
+                          imageSizeKB,
+                          imageSizeMB,
+                          cacheTypeString,
+                          image.size.width,
+                          image.size.height,
+                          weakSelf.enableUpscaling ? @"YES" : @"NO"
+                    );
+
+                    // Apply CoreML upscaling if enabled (using runtime check)
+                    id upscaler = FCGetImageUpscalerShared();
+                    if (weakSelf.enableUpscaling && image != nil) {
+                        CGSize originalSize = image.size;
+                        SEL upscaleSelector = NSSelectorFromString(@"upscaleImage:completion:");
+                        if ([upscaler respondsToSelector:upscaleSelector]) {
+                            void (^completionBlock)(UIImage * _Nullable) = ^(UIImage * _Nullable upscaledImage) {
+                                UIImage* finalImage = upscaledImage ?: image;
+
+                                BOOL upscaleSucceeded = (upscaledImage != nil && !CGSizeEqualToSize(upscaledImage.size, originalSize));
+                                NSLog(@"[FCImageMetrics] UPSCALE: %@ | Original: %.0fx%.0f -> Final: %.0fx%.0f | URL: %@",
+                                      upscaleSucceeded ? @"SUCCESS" : @"SKIPPED",
+                                      originalSize.width, originalSize.height,
+                                      finalImage.size.width, finalImage.size.height,
+                                      imageURL.absoluteString
+                                );
+
+                                weakSelf.hasCompleted = YES;
+                                [weakSelf sendOnLoad: finalImage];
+                                [weakSelf onLoadEndEvent];
+                            };
+
+                            NSMethodSignature *signature = [upscaler methodSignatureForSelector:upscaleSelector];
+                            NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
+                            [invocation setTarget:upscaler];
+                            [invocation setSelector:upscaleSelector];
+                            [invocation setArgument:&image atIndex:2];
+                            [invocation setArgument:&completionBlock atIndex:3];
+                            [invocation invoke];
+                        } else {
+                            weakSelf.hasCompleted = YES;
+                            [weakSelf sendOnLoad: image];
+                            [weakSelf onLoadEndEvent];
+                        }
+                    } else {
+                        weakSelf.hasCompleted = YES;
+                        [weakSelf sendOnLoad: image];
+                        [weakSelf onLoadEndEvent];
+                    }
                 }
             }];
 }

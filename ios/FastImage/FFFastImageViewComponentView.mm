@@ -116,6 +116,8 @@ using namespace facebook::react;
     }
     fastImageView.transition = transition;
 
+    fastImageView.enableUpscaling = newViewProps.enableUpscaling;
+
     [super updateProps:props oldProps:oldProps];
     // this method decides whether to reload the image based on changed props
     // so we call it after updating the props. If the _eventEmitter is not present yet,

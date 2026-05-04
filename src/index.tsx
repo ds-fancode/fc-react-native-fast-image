@@ -18,6 +18,10 @@ import {
     requireNativeComponent,
 } from 'react-native'
 
+const isUpscalingSupported =
+    (Platform.OS === 'ios' && parseInt(String(Platform.Version), 10) >= 16) ||
+    (Platform.OS === 'android' && (Platform.Version as number) >= 24)
+
 const isFabricEnabled = (global as any)?.nativeFabricUIManager != null
 const isTurboModuleEnabled = (global as any).__turboModuleProxy != null
 const FastImageViewModule = isTurboModuleEnabled
@@ -160,6 +164,7 @@ export interface FastImageProps extends AccessibilityProps, ViewProps {
      * Render children within the image.
      */
     children?: React.ReactNode
+    enableUpscaling?: boolean;
 }
 
 const resolveDefaultSource = (
@@ -200,6 +205,7 @@ function FastImageBase({
     children,
     transition: transitionProp,
     resizeMode: resizeModeProp = 'cover',
+    enableUpscaling,
     forwardedRef,
     ...props
 }: FastImageProps & { forwardedRef: React.Ref<any> }) {
@@ -268,6 +274,7 @@ function FastImageBase({
                 resizeMode={resizeModeProp}
                 transition={transitionProp}
                 blurRadius={blurRadius}
+                enableUpscaling={isUpscalingSupported ? !!enableUpscaling : false}
             />
             {children}
         </View>
@@ -292,6 +299,7 @@ export interface FastImageStaticProperties {
     preload: (sources: Source[]) => void
     clearMemoryCache: () => Promise<void>
     clearDiskCache: () => Promise<void>
+    setUpscalingEnabled: (enabled: boolean) => void
 }
 
 const FastImage: React.ComponentType<FastImageProps> &
@@ -310,6 +318,9 @@ FastImage.preload = (sources: Source[]) => FastImageViewModule.preload(sources)
 FastImage.clearMemoryCache = () => FastImageViewModule.clearMemoryCache()
 
 FastImage.clearDiskCache = () => FastImageViewModule.clearDiskCache()
+
+FastImage.setUpscalingEnabled = (enabled: boolean) =>
+    FastImageViewModule.setUpscalingEnabled(enabled)
 
 const styles = StyleSheet.create({
     imageContainer: {

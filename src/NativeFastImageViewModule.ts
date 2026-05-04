@@ -6,6 +6,7 @@ export interface Spec extends TurboModule {
     preload: (sources: Source[]) => void
     clearMemoryCache: () => Promise<void>
     clearDiskCache: () => Promise<void>
+    setUpscalingEnabled: (enabled: boolean) => void
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('FastImageViewModule')
