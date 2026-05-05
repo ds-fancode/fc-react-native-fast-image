@@ -1,5 +1,6 @@
 #import "FFFastImageView.h"
 #import "FFFastImageBlurTransformation.h"
+#import "FFFastImageUpscaleTransformer.h"
 #import <CoreImage/CoreImage.h>
 #import <SDWebImage/UIImage+MultiFormat.h>
 #import <SDWebImage/UIView+WebCache.h>
@@ -300,7 +301,11 @@ static NSString * const kFFFastImageDefaultErrorMessage = @"Load failed";
             }
             return [mutableRequest copy];
         }];
-        SDWebImageContext* context = @{SDWebImageContextDownloadRequestModifier: requestModifier};
+        NSMutableDictionary* mutableContext = [@{SDWebImageContextDownloadRequestModifier: requestModifier} mutableCopy];
+        if (_enableUpscaling && FCGetImageUpscalerShared() != nil) {
+            mutableContext[SDWebImageContextImageTransformer] = [FFFastImageUpscaleTransformer sharedTransformer];
+        }
+        SDWebImageContext* context = [mutableContext copy];
 
         // Set priority.
         SDWebImageOptions options = SDWebImageRetryFailed | SDWebImageHandleCookies;
@@ -388,45 +393,9 @@ static NSString * const kFFFastImageDefaultErrorMessage = @"Load failed";
                           weakSelf.enableUpscaling ? @"YES" : @"NO"
                     );
 
-                    // Apply CoreML upscaling if enabled (using runtime check)
-                    id upscaler = FCGetImageUpscalerShared();
-                    if (weakSelf.enableUpscaling && image != nil) {
-                        CGSize originalSize = image.size;
-                        SEL upscaleSelector = NSSelectorFromString(@"upscaleImage:completion:");
-                        if ([upscaler respondsToSelector:upscaleSelector]) {
-                            void (^completionBlock)(UIImage * _Nullable) = ^(UIImage * _Nullable upscaledImage) {
-                                UIImage* finalImage = upscaledImage ?: image;
-
-                                BOOL upscaleSucceeded = (upscaledImage != nil && !CGSizeEqualToSize(upscaledImage.size, originalSize));
-                                NSLog(@"[FCImageMetrics] UPSCALE: %@ | Original: %.0fx%.0f -> Final: %.0fx%.0f | URL: %@",
-                                      upscaleSucceeded ? @"SUCCESS" : @"SKIPPED",
-                                      originalSize.width, originalSize.height,
-                                      finalImage.size.width, finalImage.size.height,
-                                      imageURL.absoluteString
-                                );
-
-                                weakSelf.hasCompleted = YES;
-                                [weakSelf sendOnLoad: finalImage];
-                                [weakSelf onLoadEndEvent];
-                            };
-
-                            NSMethodSignature *signature = [upscaler methodSignatureForSelector:upscaleSelector];
-                            NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
-                            [invocation setTarget:upscaler];
-                            [invocation setSelector:upscaleSelector];
-                            [invocation setArgument:&image atIndex:2];
-                            [invocation setArgument:&completionBlock atIndex:3];
-                            [invocation invoke];
-                        } else {
-                            weakSelf.hasCompleted = YES;
-                            [weakSelf sendOnLoad: image];
-                            [weakSelf onLoadEndEvent];
-                        }
-                    } else {
-                        weakSelf.hasCompleted = YES;
-                        [weakSelf sendOnLoad: image];
-                        [weakSelf onLoadEndEvent];
-                    }
+                    weakSelf.hasCompleted = YES;
+                    [weakSelf sendOnLoad: image];
+                    [weakSelf onLoadEndEvent];
                 }
             }];
 }
