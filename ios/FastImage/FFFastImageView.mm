@@ -393,6 +393,15 @@ static NSString * const kFFFastImageDefaultErrorMessage = @"Load failed";
                           weakSelf.enableUpscaling ? @"YES" : @"NO"
                     );
 
+                    if (weakSelf.enableUpscaling && cacheType != SDImageCacheTypeNone) {
+                        NSLog(@"[FCImageMetrics] UPSCALE: CACHE_HIT | Source: %@ | ImageSize: %.0fx%.0f | URL: %@",
+                              cacheTypeString,
+                              image.size.width,
+                              image.size.height,
+                              imageURL.absoluteString
+                        );
+                    }
+
                     weakSelf.hasCompleted = YES;
                     [weakSelf sendOnLoad: image];
                     [weakSelf onLoadEndEvent];
