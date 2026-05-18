@@ -67,6 +67,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 8,
+    width: '100%',
   },
   toggleLabel: {
     color: '#222',
