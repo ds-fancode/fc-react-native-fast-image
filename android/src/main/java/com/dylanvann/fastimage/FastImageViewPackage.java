@@ -22,6 +22,8 @@ public class FastImageViewPackage extends TurboReactPackage {
     public NativeModule getModule(String name, ReactApplicationContext reactContext) {
         if (name.equals(FastImageViewModuleImplementation.REACT_CLASS)) {
             return new FastImageViewModule(reactContext);
+        } else if (name.equals(FastImageSuperResolutionModule.NAME)) {
+            return new FastImageSuperResolutionModule(reactContext);
         } else {
             return null;
         }
@@ -42,6 +44,17 @@ public class FastImageViewPackage extends TurboReactPackage {
                             true, // hasConstants
                             false, // isCxxModule
                             isTurboModule // isTurboModule
+                    ));
+            moduleInfos.put(
+                    FastImageSuperResolutionModule.NAME,
+                    new ReactModuleInfo(
+                            FastImageSuperResolutionModule.NAME,
+                            FastImageSuperResolutionModule.NAME,
+                            false, // canOverrideExistingModule
+                            true, // needsEagerInit
+                            true, // hasConstants
+                            false, // isCxxModule
+                            false // isTurboModule
                     ));
             return moduleInfos;
         };

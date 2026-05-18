@@ -28,6 +28,10 @@ import java.util.Map;
 import javax.annotation.Nullable;
 
 class FastImageViewConverter {
+
+    private static volatile boolean loggedJsSrReady;
+    private static volatile boolean loggedJsSrUnavailable;
+
     private static final Drawable TRANSPARENT_DRAWABLE = new ColorDrawable(Color.TRANSPARENT);
 
     private static final Map<String, FastImageCacheControl> FAST_IMAGE_CACHE_CONTROL_MAP =
@@ -155,6 +159,31 @@ class FastImageViewConverter {
         }
 
         return options;
+    }
+
+    /**
+     * When JS sets {@code superResolution: true} OR the global SR flag is enabled,
+     * Glide applies {@link SuperResolutionTransformation}.
+     * Global SR flag takes precedence — when it is explicitly set to false it overrides
+     * any per-image {@code superResolution} source prop.
+     * Requires {@link FastImageSuperResolution#init(android.content.Context)} and a successful model load.
+     */
+    static boolean shouldApplySuperResolution(@Nullable ReadableMap source) {
+        boolean globalSr = FastImageSuperResolutionModule.isGlobalSuperResolutionEnabled();
+
+        // Global flag is the master switch. If it is off, never apply SR regardless of per-image prop.
+        if (!globalSr) return false;
+
+        boolean ready = FastImageSuperResolution.getInstance().isAvailable();
+        if (!ready && !loggedJsSrUnavailable) {
+            loggedJsSrUnavailable = true;
+            FastImageSrLog.w("js", "superResolution=true but model not READY — filter tag " + FastImageSrLog.TAG);
+        }
+        if (ready && !loggedJsSrReady) {
+            loggedJsSrReady = true;
+            FastImageSrLog.i("js", "superResolution=true and model READY — Glide SR transform enabled");
+        }
+        return ready;
     }
 
     private static FastImageCacheControl getCacheControl(ReadableMap source) {

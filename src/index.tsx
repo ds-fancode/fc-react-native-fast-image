@@ -65,9 +65,14 @@ const cacheControl = {
 
 export type Source = {
     uri?: string
-    headers?: { [key: string]: string }
-    priority?: Priority
-    cache?: Cache
+  headers?: { [key: string]: string }
+  priority?: Priority
+  cache?: Cache
+  /**
+   * Android: when true, native applies TFLite 2× super-resolution after Glide decode.
+   * Use with half-size intelligent-image CDN URLs when {@code isImageSuperResolutionAvailable}.
+   */
+  superResolution?: boolean
 }
 
 export interface OnLoadEvent {
@@ -237,6 +242,7 @@ function FastImageBase({
     ) as ImageResolvedAssetSource & { headers: any }
     // resolvedSource would be frozen, we can't modify it
     let modifiedSource = resolvedSource
+    const rawSource = source as Source
     if (
         resolvedSource?.headers &&
         (FABRIC_ENABLED || Platform.OS === 'android')
@@ -247,6 +253,13 @@ function FastImageBase({
             headersArray.push({ name: key, value: resolvedSource.headers[key] })
         })
         modifiedSource = { ...resolvedSource, headers: headersArray }
+    }
+    
+    if (modifiedSource && typeof modifiedSource === 'object' && rawSource.superResolution != null) {
+        modifiedSource = {
+            ...modifiedSource,
+            superResolution: rawSource.superResolution
+        } as any
     }
     const resolvedDefaultSource = resolveDefaultSource(defaultSource)
     const resolvedDefaultSourceAsString =
@@ -292,6 +305,7 @@ export interface FastImageStaticProperties {
     preload: (sources: Source[]) => void
     clearMemoryCache: () => Promise<void>
     clearDiskCache: () => Promise<void>
+    setGlobalSuperResolution: (enabled: boolean) => void
 }
 
 const FastImage: React.ComponentType<FastImageProps> &
@@ -310,6 +324,25 @@ FastImage.preload = (sources: Source[]) => FastImageViewModule.preload(sources)
 FastImage.clearMemoryCache = () => FastImageViewModule.clearMemoryCache()
 
 FastImage.clearDiskCache = () => FastImageViewModule.clearDiskCache()
+
+FastImage.setGlobalSuperResolution = (enabled: boolean) => {
+    if (Platform.OS !== 'android') return
+    const mod = NativeModules.FastImageSuperResolution as
+        | { setGlobalSuperResolution?: (v: boolean) => void }
+        | undefined
+    mod?.setGlobalSuperResolution?.(enabled)
+}
+
+/** Android: show SR success/failure toasts on release builds (debug builds show them by default). */
+export function setSuperResolutionDebugToastsEnabled(enabled: boolean): void {
+  if (Platform.OS !== 'android') {
+    return
+  }
+  const mod = NativeModules.FastImageSuperResolution as
+    | { setSuperResolutionDebugToastsEnabled?: (v: boolean) => void }
+    | undefined
+  mod?.setSuperResolutionDebugToastsEnabled?.(enabled)
+}
 
 const styles = StyleSheet.create({
     imageContainer: {

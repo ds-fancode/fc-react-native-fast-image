@@ -37,6 +37,20 @@ class FastImageViewWithUrl extends AppCompatImageView {
     private Drawable mDefaultSource = null;
     private int mBlurRadius = 0;
     private int mBlurRadiusPrevious = 0;
+
+    /**
+     * URL of the most recently STARTED Glide request (set right before clearView+into).
+     * Used to skip redundant cancel-restart cycles caused by React Native re-renders that
+     * recreate the source object even when the URL and SR flag haven't changed.
+     */
+    @Nullable
+    private String mActiveLoadUrl = null;
+    /** SR flag that was active for the most recently started Glide request. */
+    private boolean mActiveLoadSr = false;
+
+    /** Once: explain why transform/infer never appear when model is READY. */
+    private static volatile boolean sLoggedWhyNoSrOnSource;
+
     public GlideUrl glideUrl;
     private String mTransition = "none"; // "none" | "fade"
 
@@ -78,6 +92,9 @@ class FastImageViewWithUrl extends AppCompatImageView {
             @NonNull FastImageViewManager manager,
             @Nullable RequestManager requestManager,
             @NonNull Map<String, List<FastImageViewWithUrl>> viewsForUrlsMap) {
+        FastImageSrLog.i("load_dbg", "onAfterUpdate needsReload=" + mNeedsReload
+                + " hasSource=" + (mSource != null)
+                + " requestMgr=" + (requestManager != null));
         if (!mNeedsReload)
             return;
 
@@ -131,12 +148,27 @@ class FastImageViewWithUrl extends AppCompatImageView {
 
         // `imageSource` may be null and we still continue, if `defaultSource` is not null
         final GlideUrl glideUrl = imageSource == null ? null : imageSource.getGlideUrl();
-
-        // Cancel existing request.
-        this.glideUrl = glideUrl;
-        clearView(requestManager);
-
         String key = glideUrl == null ? null : glideUrl.toStringUrl();
+        boolean applySr = FastImageViewConverter.shouldApplySuperResolution(mSource);
+
+        // Skip cancel-restart when URL and SR flag are unchanged. React Native re-renders
+        // caused by state changes (setLoading, setImageSize, onLoadEnd) recreate the source
+        // object on every render, triggering setSource → onAfterUpdate even when nothing
+        // meaningful changed. Without this guard, the in-flight SR request (~500ms) would be
+        // cancelled and clearView would blank the ImageView, making images appear permanently blank.
+        if (key != null && key.equals(mActiveLoadUrl) && applySr == mActiveLoadSr) {
+            FastImageSrLog.i("load_dbg", "skip restart — url/sr unchanged");
+            mNeedsReload = false;
+            return;
+        }
+        // Cancel existing request (URL or SR flag actually changed).
+        this.glideUrl = glideUrl;
+        clearView(requestManager); // resets mActiveLoadUrl; set it again below after clearing
+
+        // Record new active URL/SR so subsequent re-renders (triggered by onLoadStart /
+        // onLoadEnd state changes) hit the skip-guard above and don't cancel this request.
+        mActiveLoadUrl = key;
+        mActiveLoadSr = applySr;
 
         if (glideUrl != null) {
             FastImageOkHttpProgressGlideModule.expect(key, manager);
@@ -177,6 +209,14 @@ class FastImageViewWithUrl extends AppCompatImageView {
                                 .placeholder(mDefaultSource) // show until loaded
                                 .fallback(mDefaultSource)); // null will not be treated as error
 
+                String shortUrl = FastImageSrUiFeedback.truncateForUi(key, 80);
+                if (applySr) {
+                    FastImageSrLog.i("load", "SR=ON  url=" + shortUrl);
+                    builder = builder.transform(new SuperResolutionTransformation(key));
+                } else {
+                    FastImageSrLog.i("load", "SR=OFF url=" + shortUrl);
+                }
+
                 if (key != null) {
                     builder.listener(new FastImageRequestListener(key));
                 }
@@ -186,6 +226,7 @@ class FastImageViewWithUrl extends AppCompatImageView {
                 }
 
                 builder.into(this);
+                maybeLogWhyNoSrTransform();
             } catch (Exception e) {
                 Log.e(TAG, String.format("Error detecting image type for URI: %s. Exception: %s",
                 imageSource != null ? imageSource.getUri().toString() : "null", e.getMessage()), e);
@@ -193,9 +234,51 @@ class FastImageViewWithUrl extends AppCompatImageView {
         }
     }
 
+    /**
+     * If you only see init/pipeline logs but never transform/infer: JS must pass
+     * {@code superResolution: true} on the FastImage source. That only happens when the
+     * intelligent-image URL actually changes (see fc-ui-components Image).
+     */
+    private void maybeLogWhyNoSrTransform() {
+        if (sLoggedWhyNoSrOnSource) {
+            return;
+        }
+        if (!FastImageSuperResolution.getInstance().isAvailable()) {
+            return;
+        }
+        if (mSource == null) {
+            return;
+        }
+        if (FastImageViewConverter.shouldApplySuperResolution(mSource)) {
+            return;
+        }
+        sLoggedWhyNoSrOnSource = true;
+        try {
+            if (!mSource.hasKey("superResolution")) {
+                FastImageSrLog.w(
+                        "load",
+                        "Model READY but source has no superResolution key — "
+                                + "no transform/infer. JS sets it only when intelligent-image URL "
+                                + "rewrites (optimised URL ≠ original). Check image host vs imgDefaultPatterns.");
+            } else if (!mSource.getBoolean("superResolution")) {
+                FastImageSrLog.i("load", "superResolution=false on source — SR transform skipped");
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
     public void clearView(@Nullable RequestManager requestManager) {
-        if (requestManager != null && getTag() != null && getTag() instanceof Request) {
+        // requestManager.clear(view) is always safe to call, even with no pending request.
+        // The old condition `getTag() instanceof Request` is always false in Glide 4.12+
+        // because Glide uses view.setTag(R.id.glide_custom_view_target_tag, …), not the
+        // default tag slot — so cancellation was silently skipped.
+        if (requestManager != null) {
+            FastImageSrLog.i("load_dbg",
+                    "clearView — cancelling glide request for viewId=" + getId()
+                    + " activeUrl=" + (mActiveLoadUrl != null ? mActiveLoadUrl.substring(0, Math.min(60, mActiveLoadUrl.length())) : "null"));
             requestManager.clear(this);
         }
+        mActiveLoadUrl = null;
+        mActiveLoadSr = false;
     }
 }
