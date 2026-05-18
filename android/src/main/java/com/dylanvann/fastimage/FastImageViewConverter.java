@@ -164,18 +164,16 @@ class FastImageViewConverter {
     /**
      * When JS sets {@code superResolution: true} OR the global SR flag is enabled,
      * Glide applies {@link SuperResolutionTransformation}.
+     * Global SR flag takes precedence — when it is explicitly set to false it overrides
+     * any per-image {@code superResolution} source prop.
      * Requires {@link FastImageSuperResolution#init(android.content.Context)} and a successful model load.
      */
     static boolean shouldApplySuperResolution(@Nullable ReadableMap source) {
-        boolean wantSr = FastImageSuperResolutionModule.isGlobalSuperResolutionEnabled();
-        if (!wantSr && source != null && source.hasKey("superResolution")) {
-            try {
-                wantSr = source.getBoolean("superResolution");
-            } catch (Exception e) {
-                // ignore
-            }
-        }
-        if (!wantSr) return false;
+        boolean globalSr = FastImageSuperResolutionModule.isGlobalSuperResolutionEnabled();
+
+        // Global flag is the master switch. If it is off, never apply SR regardless of per-image prop.
+        if (!globalSr) return false;
+
         boolean ready = FastImageSuperResolution.getInstance().isAvailable();
         if (!ready && !loggedJsSrUnavailable) {
             loggedJsSrUnavailable = true;
