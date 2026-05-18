@@ -90,10 +90,31 @@ public class FastImageSuperResolutionModule extends ReactContextBaseJavaModule {
      * Globally enables or disables super-resolution for every FastImage load.
      * When enabled, all images are processed through the SR model regardless of
      * the per-image {@code superResolution} source flag.
+     * Clears Glide memory and disk caches so images reload through the updated pipeline.
      */
     @ReactMethod
     public void setGlobalSuperResolution(boolean enabled) {
         globalSuperResolutionEnabled = enabled;
         FastImageSrLog.i("bridge", "globalSuperResolution=" + enabled);
+
+        ReactApplicationContext ctx = getReactApplicationContext();
+        // Disk cache must be cleared off the main thread.
+        new Thread(() -> {
+            try {
+                com.bumptech.glide.Glide.get(ctx).clearDiskCache();
+            } catch (Exception e) {
+                FastImageSrLog.w("bridge", "clearDiskCache failed: " + e.getMessage());
+            }
+        }).start();
+
+        // Memory cache must be cleared on the main thread.
+        android.os.Handler mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+        mainHandler.post(() -> {
+            try {
+                com.bumptech.glide.Glide.get(ctx).clearMemory();
+            } catch (Exception e) {
+                FastImageSrLog.w("bridge", "clearMemory failed: " + e.getMessage());
+            }
+        });
     }
 }

@@ -331,9 +331,6 @@ FastImage.setGlobalSuperResolution = (enabled: boolean) => {
         | { setGlobalSuperResolution?: (v: boolean) => void }
         | undefined
     mod?.setGlobalSuperResolution?.(enabled)
-    // Clear caches so all images reload through the updated SR pipeline
-    FastImageViewModule.clearMemoryCache()
-    FastImageViewModule.clearDiskCache()
 }
 
 /** Android: show SR success/failure toasts on release builds (debug builds show them by default). */
