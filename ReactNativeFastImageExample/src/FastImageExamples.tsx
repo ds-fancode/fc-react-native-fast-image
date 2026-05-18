@@ -16,6 +16,7 @@ import {AutoSizeExample} from './AutoSizeExample';
 import {AvifExample} from './AvifExample';
 import {SvgExample} from './SvgExample';
 import {TransitionExample} from './TransitionExample';
+import {SuperResolutionExample} from './SuperResolutionExample';
 
 const FastImageExample = () => (
   <View style={styles.container}>
@@ -45,6 +46,7 @@ const FastImageExample = () => (
         <LocalImagesExample />
         <AutoSizeExample />
         <AvifExample />
+        <SuperResolutionExample />
       </View>
     </ScrollView>
     <StatusBarUnderlay />
