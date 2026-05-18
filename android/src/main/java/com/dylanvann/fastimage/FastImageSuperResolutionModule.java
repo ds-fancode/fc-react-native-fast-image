@@ -22,6 +22,13 @@ public class FastImageSuperResolutionModule extends ReactContextBaseJavaModule {
 
     public static final String NAME = "FastImageSuperResolution";
 
+    /** When true, every FastImage load uses SR regardless of per-image source flag. */
+    private static volatile boolean globalSuperResolutionEnabled = false;
+
+    public static boolean isGlobalSuperResolutionEnabled() {
+        return globalSuperResolutionEnabled;
+    }
+
     FastImageSuperResolutionModule(ReactApplicationContext reactContext) {
         super(reactContext);
         // ERROR level — never filtered, confirms class was compiled and instantiated
@@ -77,5 +84,16 @@ public class FastImageSuperResolutionModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void setSuperResolutionDebugToastsEnabled(boolean enabled) {
         FastImageSrUiFeedback.setForceDebugToastsEnabled(enabled);
+    }
+
+    /**
+     * Globally enables or disables super-resolution for every FastImage load.
+     * When enabled, all images are processed through the SR model regardless of
+     * the per-image {@code superResolution} source flag.
+     */
+    @ReactMethod
+    public void setGlobalSuperResolution(boolean enabled) {
+        globalSuperResolutionEnabled = enabled;
+        FastImageSrLog.i("bridge", "globalSuperResolution=" + enabled);
     }
 }

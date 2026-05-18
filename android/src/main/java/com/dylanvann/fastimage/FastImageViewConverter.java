@@ -162,28 +162,30 @@ class FastImageViewConverter {
     }
 
     /**
-     * When JS sets {@code superResolution: true}, Glide applies {@link SuperResolutionTransformation}.
+     * When JS sets {@code superResolution: true} OR the global SR flag is enabled,
+     * Glide applies {@link SuperResolutionTransformation}.
      * Requires {@link FastImageSuperResolution#init(android.content.Context)} and a successful model load.
      */
     static boolean shouldApplySuperResolution(@Nullable ReadableMap source) {
-        if (source == null || !source.hasKey("superResolution")) {
-            return false;
-        }
-        try {
-            boolean wantSr = source.getBoolean("superResolution");
-            boolean ready = FastImageSuperResolution.getInstance().isAvailable();
-            if (wantSr && !ready && !loggedJsSrUnavailable) {
-                loggedJsSrUnavailable = true;
-                FastImageSrLog.w("js", "superResolution=true but model not READY — filter tag " + FastImageSrLog.TAG);
+        boolean wantSr = FastImageSuperResolutionModule.isGlobalSuperResolutionEnabled();
+        if (!wantSr && source != null && source.hasKey("superResolution")) {
+            try {
+                wantSr = source.getBoolean("superResolution");
+            } catch (Exception e) {
+                // ignore
             }
-            if (wantSr && ready && !loggedJsSrReady) {
-                loggedJsSrReady = true;
-                FastImageSrLog.i("js", "superResolution=true and model READY — Glide SR transform enabled");
-            }
-            return wantSr && ready;
-        } catch (Exception e) {
-            return false;
         }
+        if (!wantSr) return false;
+        boolean ready = FastImageSuperResolution.getInstance().isAvailable();
+        if (!ready && !loggedJsSrUnavailable) {
+            loggedJsSrUnavailable = true;
+            FastImageSrLog.w("js", "superResolution=true but model not READY — filter tag " + FastImageSrLog.TAG);
+        }
+        if (ready && !loggedJsSrReady) {
+            loggedJsSrReady = true;
+            FastImageSrLog.i("js", "superResolution=true and model READY — Glide SR transform enabled");
+        }
+        return ready;
     }
 
     private static FastImageCacheControl getCacheControl(ReadableMap source) {

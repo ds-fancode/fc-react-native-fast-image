@@ -305,6 +305,7 @@ export interface FastImageStaticProperties {
     preload: (sources: Source[]) => void
     clearMemoryCache: () => Promise<void>
     clearDiskCache: () => Promise<void>
+    setGlobalSuperResolution: (enabled: boolean) => void
 }
 
 const FastImage: React.ComponentType<FastImageProps> &
@@ -323,6 +324,14 @@ FastImage.preload = (sources: Source[]) => FastImageViewModule.preload(sources)
 FastImage.clearMemoryCache = () => FastImageViewModule.clearMemoryCache()
 
 FastImage.clearDiskCache = () => FastImageViewModule.clearDiskCache()
+
+FastImage.setGlobalSuperResolution = (enabled: boolean) => {
+    if (Platform.OS !== 'android') return
+    const mod = NativeModules.FastImageSuperResolution as
+        | { setGlobalSuperResolution?: (v: boolean) => void }
+        | undefined
+    mod?.setGlobalSuperResolution?.(enabled)
+}
 
 /** Android: show SR success/failure toasts on release builds (debug builds show them by default). */
 export function setSuperResolutionDebugToastsEnabled(enabled: boolean): void {
